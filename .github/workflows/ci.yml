@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      cosmos:
+        image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview
+        ports:
+          - 8081:8081
+    env:
+      CosmosDb__ConnectionString: "AccountEndpoint=http://localhost:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==;"
+      # Emulator tests fail instead of skipping, so a broken emulator can't pass the build.
+      REQUIRE_COSMOS_EMULATOR: "true"
+      DOTNET_NOLOGO: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Restore and build
+        run: dotnet build IplFranchise.sln -c Release
+      - name: Wait for the Cosmos DB emulator
+        run: |
+          for i in $(seq 1 60); do
+            curl -s -o /dev/null http://localhost:8081/ && exit 0
+            sleep 2
+          done
+          echo "Cosmos DB emulator did not start" && exit 1
+      - name: Unit, migration and integration tests (against the emulator)
+        run: dotnet test --solution IplFranchise.sln -c Release --no-build
+      - name: Compile the Bicep template
+        run: az bicep build --file IplFranchise.DbMaintenance/Infrastructure/main.bicep --stdout > /dev/null
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Build
+        run: npx ng build --configuration production
+      - name: Component and API-client tests
+        run: npx ng test --watch=false
+
+  images:
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the Docker images the compose file runs
+        run: docker compose build

@@ -1,0 +1,114 @@
+@IplFranchise.Api_HostAddress = http://localhost:5220
+@token = paste-the-accessToken-from-the-dev-token-call
+
+### API liveness
+GET {{IplFranchise.Api_HostAddress}}/api/health
+Accept: application/json
+
+### Cosmos DB connectivity
+GET {{IplFranchise.Api_HostAddress}}/api/health/db
+Accept: application/json
+
+### Dev only: get a customer token (set "admin": true for the admin endpoints)
+POST {{IplFranchise.Api_HostAddress}}/api/dev/token
+Content-Type: application/json
+
+{ "userId": "asha", "admin": false }
+
+### Franchises
+GET {{IplFranchise.Api_HostAddress}}/api/v1/franchises
+
+### Search the catalogue (all filters optional); pass continuationToken from the previous page for the next one
+GET {{IplFranchise.Api_HostAddress}}/api/v1/products?franchise=csk&type=cap&q=cap&pageSize=5
+
+### One product
+GET {{IplFranchise.Api_HostAddress}}/api/v1/products/csk/csk-cap
+
+### Cart
+GET {{IplFranchise.Api_HostAddress}}/api/v1/cart
+Authorization: Bearer {{token}}
+
+### Add to cart (every cart change needs a fresh Idempotency-Key)
+POST {{IplFranchise.Api_HostAddress}}/api/v1/cart/items
+Authorization: Bearer {{token}}
+Idempotency-Key: 5d0c9d2e-8f3b-4c55-9d52-0d6d6b7c1a01
+Content-Type: application/json
+
+{ "franchiseId": "csk", "productId": "csk-cap", "quantity": 2 }
+
+### Change a quantity
+PUT {{IplFranchise.Api_HostAddress}}/api/v1/cart/items/csk-cap
+Authorization: Bearer {{token}}
+Idempotency-Key: 5d0c9d2e-8f3b-4c55-9d52-0d6d6b7c1a02
+Content-Type: application/json
+
+{ "quantity": 3 }
+
+### Remove a line
+DELETE {{IplFranchise.Api_HostAddress}}/api/v1/cart/items/csk-cap
+Authorization: Bearer {{token}}
+Idempotency-Key: 5d0c9d2e-8f3b-4c55-9d52-0d6d6b7c1a03
+
+### Accept today's prices (send the total you were shown)
+POST {{IplFranchise.Api_HostAddress}}/api/v1/cart/accept-changes
+Authorization: Bearer {{token}}
+Idempotency-Key: 5d0c9d2e-8f3b-4c55-9d52-0d6d6b7c1a04
+Content-Type: application/json
+
+{ "expectedTotalPaise": 149700 }
+
+### Place an order. The id is yours: repeat this exact call after a timeout and you get the same order back.
+PUT {{IplFranchise.Api_HostAddress}}/api/v1/orders/3f6c1c0e-6a53-4a39-9c2b-0b4a3d2e9f10
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "acceptedTotalPaise": 149700 }
+
+### Order history (newest first)
+GET {{IplFranchise.Api_HostAddress}}/api/v1/orders?pageSize=10
+Authorization: Bearer {{token}}
+
+### One order
+GET {{IplFranchise.Api_HostAddress}}/api/v1/orders/3f6c1c0e-6a53-4a39-9c2b-0b4a3d2e9f10
+Authorization: Bearer {{token}}
+
+### Admin: create a product with its opening stock (use an admin token). The id is yours; repeating answers 409 product-exists.
+POST {{IplFranchise.Api_HostAddress}}/api/v1/admin/products
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "franchiseId": "csk",
+  "id": "csk-cap",
+  "type": "cap",
+  "name": "CSK Cap",
+  "description": "Official Chennai Super Kings cap.",
+  "pricePaise": 49900,
+  "limitedEdition": false,
+  "maxPerCustomer": null,
+  "initialStock": 100
+}
+
+### Admin: read a product with its price and stock versions (use an admin token)
+GET {{IplFranchise.Api_HostAddress}}/api/v1/admin/products/csk/csk-cap
+Authorization: Bearer {{token}}
+
+### Admin: change the price (If-Match = priceETag from the call above)
+PUT {{IplFranchise.Api_HostAddress}}/api/v1/admin/products/csk/csk-cap/price
+Authorization: Bearer {{token}}
+If-Match: "paste-priceETag"
+Content-Type: application/json
+
+{ "pricePaise": 54900, "reason": "season pricing" }
+
+### Admin: set the stock (If-Match = stockETag)
+PUT {{IplFranchise.Api_HostAddress}}/api/v1/admin/products/csk/csk-cap/stock
+Authorization: Bearer {{token}}
+If-Match: "paste-stockETag"
+Content-Type: application/json
+
+{ "available": 120, "reason": "recount" }
+
+### Admin: history, field=price or field=stock
+GET {{IplFranchise.Api_HostAddress}}/api/v1/admin/products/csk/csk-cap/audit?field=price
+Authorization: Bearer {{token}}

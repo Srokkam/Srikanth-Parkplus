@@ -1,0 +1,59 @@
+# The whole store with one command, for local use:   docker compose up --build
+#
+#   Store (Angular)        http://localhost:8080
+#   API (Swagger)          http://localhost:5220/swagger
+#   Cosmos Data Explorer   http://localhost:1234
+#
+# db-setup creates the database and containers and runs the data migrations (which add the opening catalogue),
+# then exits; the API starts only after it succeeded. Stop with Ctrl+C, reset everything with: docker compose down
+
+x-cosmos: &cosmos-connection
+  # The emulator's published key. The tools recognise it and refuse to run provisioning against anything else.
+  CosmosDb__ConnectionString: "AccountEndpoint=http://cosmos:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==;"
+
+services:
+  cosmos:
+    image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview
+    ports:
+      - "8081:8081"
+      - "1234:1234"
+
+  db-setup:
+    build:
+      context: ./backend
+      target: dbmaintenance
+    environment: *cosmos-connection
+    depends_on:
+      - cosmos
+    # The emulator takes a few seconds to accept requests; setup-local is safe to repeat.
+    entrypoint:
+      - sh
+      - -c
+      - |
+        for attempt in $$(seq 1 40); do
+          dotnet IplFranchise.DbMaintenance.dll setup-local && exit 0
+          echo "Cosmos DB emulator not ready yet (attempt $$attempt), retrying in 3 s"
+          sleep 3
+        done
+        exit 1
+
+  api:
+    build:
+      context: ./backend
+      target: api
+    environment:
+      <<: *cosmos-connection
+      # Development turns on Swagger and the development sign-in endpoint; this file is for local use only.
+      ASPNETCORE_ENVIRONMENT: Development
+    ports:
+      - "5220:8080"
+    depends_on:
+      db-setup:
+        condition: service_completed_successfully
+
+  web:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - api

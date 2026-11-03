@@ -1,0 +1,61 @@
+{
+  "$comment": "The one declaration of the IPL store schema. Read by the maintenance tool (provision, verify-schema) and by Infrastructure/main.bicep. Change containers here and nowhere else. Partition keys can never change on an existing container.",
+  "databaseName": "ipl-store",
+  "containers": [
+    {
+      "name": "inventory",
+      "partitionKeyPath": "/tenantId",
+      "defaultTtlSeconds": null,
+      "excludedPaths": [],
+      "compositeIndexes": [],
+      "docKinds": [ "stock", "audit", "deduct", "purchase" ],
+      "why": "One partition value (default) so one transactional batch can deduct several products, create the checkout marker and write the ledger atomically."
+    },
+    {
+      "name": "products",
+      "partitionKeyPath": "/franchiseId",
+      "defaultTtlSeconds": null,
+      "excludedPaths": [ "/description/?" ],
+      "compositeIndexes": [
+        [
+          { "path": "/nameLower", "order": "ascending" },
+          { "path": "/id", "order": "ascending" }
+        ]
+      ],
+      "docKinds": [ "product", "audit" ],
+      "why": "The catalogue is browsed per franchise; price audit rows sit next to their product so both commit in one batch."
+    },
+    {
+      "name": "carts",
+      "partitionKeyPath": "/userId",
+      "defaultTtlSeconds": 2592000,
+      "excludedPaths": [],
+      "compositeIndexes": [],
+      "docKinds": [ "cart", "idempotency" ],
+      "why": "Every cart read and write is for one user; the cart change and its idempotency record share a partition so they commit together. TTL must stay on: carts expire after 30 days and idempotency records after their own 24-hour ttl."
+    },
+    {
+      "name": "orders",
+      "partitionKeyPath": "/userId",
+      "defaultTtlSeconds": null,
+      "excludedPaths": [],
+      "compositeIndexes": [
+        [
+          { "path": "/createdUtc", "order": "descending" },
+          { "path": "/id", "order": "descending" }
+        ]
+      ],
+      "docKinds": [ "order" ],
+      "why": "Order history is always one user, newest first."
+    },
+    {
+      "name": "migrations",
+      "partitionKeyPath": "/id",
+      "defaultTtlSeconds": null,
+      "excludedPaths": [],
+      "compositeIndexes": [],
+      "docKinds": [],
+      "why": "One record per data migration, looked up by id; its _etag lets only one runner claim a migration."
+    }
+  ]
+}
