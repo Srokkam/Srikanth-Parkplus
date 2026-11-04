@@ -6,12 +6,13 @@ namespace IplFranchise.IntegrationTests;
 /// <summary>Creating products through the admin API. A separate class, so these products live in their own database.</summary>
 public class CatalogueAdminTests(ApiFixture api) : IClassFixture<ApiFixture>
 {
-    private static object NewProduct(string franchiseId, string id, int initialStock = 25) => new
+    // Tests in this class share a database and run in no fixed order, so each product needs its own name to keep searches exact.
+    private static object NewProduct(string franchiseId, string id, string name = "DC Cap", int initialStock = 25) => new
     {
         franchiseId,
         id,
         type = "cap",
-        name = "DC Cap",
+        name,
         description = "Official Delhi Capitals cap.",
         pricePaise = 54900L,
         limitedEdition = false,
@@ -47,9 +48,9 @@ public class CatalogueAdminTests(ApiFixture api) : IClassFixture<ApiFixture>
     {
         var shop = api.Start();
         var admin = await shop.AdminAsync();
-        await shop.PostAsync(admin, "/api/v1/admin/products", NewProduct("dc", "dc-flag", initialStock: 10));
+        await shop.PostAsync(admin, "/api/v1/admin/products", NewProduct("dc", "dc-flag", "DC Flag", initialStock: 10));
 
-        var again = await shop.PostAsync(admin, "/api/v1/admin/products", NewProduct("dc", "dc-flag", initialStock: 99));
+        var again = await shop.PostAsync(admin, "/api/v1/admin/products", NewProduct("dc", "dc-flag", "DC Flag", initialStock: 99));
 
         Assert.Equal(HttpStatusCode.Conflict, again.Status);
         Assert.Equal(ProblemCodes.ProductExists, again.ProblemCode);
